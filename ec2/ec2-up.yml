@@ -1,0 +1,57 @@
+---
+  - name: Set up EC2 Sandbox
+    hosts: local
+    connection: local
+    vars:
+      instance_type: "t2.micro"
+      aws_image: "ami-0ac43988dfd31ab9a"
+      aws_region: "eu-west-1"
+      ssh_user: "ec2-user"
+      security_group: "sandbox_sg"
+      ssh_key: "sandbox-key"
+      tag: "my-ec2-sandbox"
+      key_name: "sandbox_key"
+
+    tasks:
+      - name: Create key pair
+        amazon.aws.ec2_key:
+          name: "{{ key_name }}"
+          region: "{{ aws_region }}"
+          state: present
+        register: key_result
+
+      - name: Save key in current directory
+        copy: content="{{ key_result.key.private_key }}" dest="./{{ ssh_key }}.pem" mode="0644"
+        
+
+      - name: Create security group
+        amazon.aws.ec2_group:
+          name: "{{ security_group }}"
+          description: Instance sandbox security group
+          region: "{{ aws_region }}"
+          rules:
+            - proto: tcp
+              from_port: 22
+              to_port: 22
+              cidr_ip: 0.0.0.0/0
+              rule_desc: allow all on port 22
+          rules_egress:
+            - proto: all
+              cidr_ip: 0.0.0.0/0
+          tags:
+            Name: "{{ tag }}"
+      
+      - name: Launch instance 
+        amazon.aws.ec2:
+          instance_type: "{{ instance_type }}"
+          image: "{{ aws_image }}"
+          region: "{{ aws_region }}"
+          wait: true
+          key_name: "{{ key_name }}"
+          group: "{{ security_group }}"
+          instance_tags:
+              Name: "{{ tag }}"
+        register: instance_result
+
+      - name: Log instance public_ip
+        debug: var=instance_result.instances[0].public_ip
